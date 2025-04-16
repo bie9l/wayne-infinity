@@ -40,4 +40,17 @@ ENV/
 
 # Sistema
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.cache/
+*.cache
+frontend/node_modules/
+frontend/.cache/
+frontend/.next/
+frontend/dist/ 
