@@ -1,6 +1,7 @@
 from rest_framework import generics, permissions
 from .models import Vehicle
 from .serializers import VehicleSerializer
+from users.permissions import IsAdminOrManager
 
 # Create your views here.
 
@@ -11,6 +12,12 @@ class VehicleListCreateView(generics.ListCreateAPIView):
     queryset = Vehicle.objects.all()
     serializer_class = VehicleSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.IsAuthenticated()]
+        return [IsAdminOrManager()]
+
     filterset_fields = ['type', 'status', 'fuel_type']
     search_fields = ['name', 'license_plate', 'vin', 'model', 'manufacturer']
     ordering_fields = ['name', 'status', 'mileage', 'created_at', 'updated_at']
@@ -33,3 +40,8 @@ class VehicleRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Vehicle.objects.all()
     serializer_class = VehicleSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.IsAuthenticated()]
+        return [IsAdminOrManager()]

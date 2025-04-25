@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Typography,
   Button,
@@ -19,6 +19,10 @@ import {
   Delete as DeleteIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
+import { useDispatch, useSelector } from 'react-redux';
+import { fetchStart, fetchSuccess, fetchFailure } from '../../store/slices/securitySlice';
+import { securityService } from '../../services/security';
+import SecurityLogger from '../../services/logger';
 import PageContainer from '../../components/PageContainer';
 import FormDialog from '../../components/FormDialog';
 
@@ -27,31 +31,57 @@ function TabPanel({ children, value, index }) {
 }
 
 function Security() {
+  const dispatch = useDispatch();
+  const { alerts = [], logs = [], isLoading, error } = useSelector((state) => state.security);
   const [tabValue, setTabValue] = useState(0);
-  const [alerts, setAlerts] = useState([]);
-  const [restrictedAreas, setRestrictedAreas] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({
-    name: '',
+    title: '',
     description: '',
-    level: '',
-    status: '',
+    severity: 'low',
+    status: 'open',
+    location: '',
+    affected_assets: '',
+    notes: ''
   });
 
-  const securityLevels = [
-    'Baixo',
-    'Médio',
-    'Alto',
-    'Crítico',
+  const SECURITY_LEVELS = [
+    { value: 'low', label: 'Baixa' },
+    { value: 'medium', label: 'Média' },
+    { value: 'high', label: 'Alta' },
+    { value: 'critical', label: 'Crítica' }
   ];
 
-  const alertStatus = [
-    'Ativo',
-    'Em Investigação',
-    'Resolvido',
-    'Arquivado',
+  const ALERT_STATUS = [
+    { value: 'open', label: 'Aberto' },
+    { value: 'investigating', label: 'Em Investigação' },
+    { value: 'resolved', label: 'Resolvido' },
+    { value: 'closed', label: 'Fechado' }
   ];
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        dispatch(fetchStart());
+        const [incidentsData, logsData] = await Promise.all([
+          securityService.getAlerts(),
+          securityService.getLogs()
+        ]);
+        dispatch(fetchSuccess({ 
+          type: 'alerts', 
+          data: incidentsData 
+        }));
+        dispatch(fetchSuccess({ 
+          type: 'logs', 
+          data: logsData 
+        }));
+      } catch (err) {
+        dispatch(fetchFailure(err.message));
+      }
+    };
+    fetchData();
+  }, [dispatch]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -64,10 +94,13 @@ function Security() {
     } else {
       setEditingItem(null);
       setFormData({
-        name: '',
+        title: '',
         description: '',
-        level: '',
-        status: '',
+        severity: 'low',
+        status: 'open',
+        location: '',
+        affected_assets: '',
+        notes: ''
       });
     }
     setOpenDialog(true);
@@ -79,42 +112,94 @@ function Security() {
   };
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const newItem = { ...formData, id: editingItem?.id || Date.now() };
+    const { name, value } = e.target;
     
-    if (tabValue === 0) { // Alertas
-      if (editingItem) {
-        setAlerts(alerts.map((a) => a.id === editingItem.id ? newItem : a));
-      } else {
-        setAlerts([...alerts, newItem]);
-      }
-    } else { // Áreas Restritas
-      if (editingItem) {
-        setRestrictedAreas(restrictedAreas.map((a) => a.id === editingItem.id ? newItem : a));
-      } else {
-        setRestrictedAreas([...restrictedAreas, newItem]);
-      }
+    // Tratamento especial para campos de data
+    if (name === 'date') {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value || null
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
     }
-    handleCloseDialog();
   };
 
-  const handleDelete = (id) => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      // Validação dos campos obrigatórios
+      if (!formData.title || !formData.description || !formData.severity || !formData.status) {
+        dispatch(fetchFailure('Todos os campos obrigatórios devem ser preenchidos'));
+        return;
+      }
+
+      // Preparar dados para envio
+      const dataToSend = {
+        ...formData,
+        reported_by: 'Sistema', // TODO: Pegar do usuário logado
+        reported_at: new Date().toISOString()
+      };
+
+      if (editingItem) {
+        const updatedAlert = await securityService.updateAlert(editingItem.id, dataToSend);
+        dispatch(fetchSuccess({ type: 'alerts', data: alerts.map(a => a.id === editingItem.id ? updatedAlert : a) }));
+        
+        try {
+          // Registrar log de atualização
+          await SecurityLogger.logIncidentUpdated(
+            updatedAlert,
+            '127.0.0.1' // TODO: Pegar IP real
+          );
+        } catch (logError) {
+          console.error('Erro ao registrar log de atualização:', logError);
+        }
+      } else {
+        const newAlert = await securityService.createAlert(dataToSend);
+        dispatch(fetchSuccess({ type: 'alerts', data: [newAlert, ...alerts] }));
+        
+        try {
+          // Registrar log de criação
+          await SecurityLogger.logIncidentCreated(
+            newAlert,
+            '127.0.0.1' // TODO: Pegar IP real
+          );
+        } catch (logError) {
+          console.error('Erro ao registrar log de criação:', logError);
+        }
+      }
+      handleCloseDialog();
+    } catch (err) {
+      console.error('Erro completo:', err);
+      dispatch(fetchFailure(err.message));
+    }
+  };
+
+  const handleDelete = async (id) => {
     const confirmMessage = tabValue === 0
       ? 'Tem certeza que deseja excluir este alerta?'
-      : 'Tem certeza que deseja excluir esta área restrita?';
+      : 'Tem certeza que deseja excluir este log?';
 
     if (window.confirm(confirmMessage)) {
-      if (tabValue === 0) {
-        setAlerts(alerts.filter((a) => a.id !== id));
-      } else {
-        setRestrictedAreas(restrictedAreas.filter((a) => a.id !== id));
+      try {
+        if (tabValue === 0) {
+          await securityService.deleteAlert(id);
+          dispatch(fetchSuccess({ type: 'alerts', data: alerts.filter(a => a.id !== id) }));
+          
+          // Registrar log de exclusão
+          await SecurityLogger.logIncidentDeleted(
+            id,
+            '127.0.0.1' // TODO: Pegar IP real
+          );
+        } else {
+          await securityService.deleteLog(id);
+          dispatch(fetchSuccess({ type: 'logs', data: logs.filter(l => l.id !== id) }));
+        }
+      } catch (err) {
+        dispatch(fetchFailure(err.message));
       }
     }
   };
@@ -124,17 +209,32 @@ function Security() {
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            {item.name}
+            {item.title}
           </Typography>
           <Typography color="textSecondary" gutterBottom>
             {item.description}
           </Typography>
           <Typography color="textSecondary">
-            Nível: {item.level}
+            Severidade: {SECURITY_LEVELS.find(l => l.value === item.severity)?.label || item.severity}
           </Typography>
           <Typography color="textSecondary">
-            Status: {item.status}
+            Status: {ALERT_STATUS.find(s => s.value === item.status)?.label || item.status}
           </Typography>
+          {item.location && (
+            <Typography color="textSecondary">
+              Local: {item.location}
+            </Typography>
+          )}
+          {item.affected_assets && (
+            <Typography color="textSecondary">
+              Ativos Afetados: {item.affected_assets}
+            </Typography>
+          )}
+          {item.reported_at && (
+            <Typography color="textSecondary">
+              Reportado em: {new Date(item.reported_at).toLocaleDateString()}
+            </Typography>
+          )}
         </CardContent>
         <CardActions>
           <IconButton
@@ -154,11 +254,14 @@ function Security() {
     </Grid>
   );
 
+  if (isLoading) return <Typography>Carregando...</Typography>;
+  if (error) return <Typography color="error">{error}</Typography>;
+
   return (
     <PageContainer title="Segurança">
       <Tabs value={tabValue} onChange={handleTabChange} sx={{ mb: 3 }}>
-        <Tab label="Alertas" />
-        <Tab label="Áreas Restritas" />
+        <Tab label="Incidentes" />
+        <Tab label="Logs" />
       </Tabs>
 
       <TabPanel value={tabValue} index={0}>
@@ -169,44 +272,76 @@ function Security() {
             onClick={() => handleOpenDialog()}
             color="error"
           >
-            Novo Alerta
+            Novo Incidente
           </Button>
         </Box>
         <Grid container spacing={3}>
-          {alerts.map(renderCard)}
+          {alerts && alerts.length > 0 ? (
+            alerts.map(renderCard)
+          ) : (
+            <Grid item xs={12}>
+              <Typography color="textSecondary" align="center">
+                Nenhum incidente registrado
+              </Typography>
+            </Grid>
+          )}
         </Grid>
       </TabPanel>
 
       <TabPanel value={tabValue} index={1}>
-        <Box mb={3}>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
-          >
-            Nova Área Restrita
-          </Button>
-        </Box>
         <Grid container spacing={3}>
-          {restrictedAreas.map(renderCard)}
+          {logs && logs.length > 0 ? (
+            logs.map((log) => (
+              <Grid item xs={12} sm={6} md={4} key={log.id}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      {log.event_type}
+                    </Typography>
+                    <Typography color="textSecondary" gutterBottom>
+                      {log.description}
+                    </Typography>
+                    <Typography color="textSecondary">
+                      Usuário: {log.user}
+                    </Typography>
+                    <Typography color="textSecondary">
+                      IP: {log.ip_address}
+                    </Typography>
+                    {log.location && (
+                      <Typography color="textSecondary">
+                        Local: {log.location}
+                      </Typography>
+                    )}
+                    <Typography color="textSecondary">
+                      Data: {new Date(log.created_at).toLocaleDateString()}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))
+          ) : (
+            <Grid item xs={12}>
+              <Typography color="textSecondary" align="center">
+                Nenhum log registrado
+              </Typography>
+            </Grid>
+          )}
         </Grid>
       </TabPanel>
 
       <FormDialog
         open={openDialog}
         onClose={handleCloseDialog}
-        title={editingItem
-          ? `Editar ${tabValue === 0 ? 'Alerta' : 'Área Restrita'}`
-          : `Novo ${tabValue === 0 ? 'Alerta' : 'Área Restrita'}`}
+        title={editingItem ? "Editar Incidente" : "Novo Incidente"}
         onSubmit={handleSubmit}
       >
         <Grid container spacing={2}>
           <Grid item xs={12}>
             <TextField
-              name="name"
-              label="Nome"
+              name="title"
+              label="Título"
               fullWidth
-              value={formData.name}
+              value={formData.title}
               onChange={handleChange}
               required
             />
@@ -225,37 +360,70 @@ function Security() {
           </Grid>
           <Grid item xs={12}>
             <TextField
-              name="level"
-              label="Nível"
-              fullWidth
               select
-              value={formData.level}
+              name="severity"
+              label="Severidade"
+              fullWidth
+              value={formData.severity}
               onChange={handleChange}
               required
             >
-              {securityLevels.map((level) => (
-                <MenuItem key={level} value={level}>
-                  {level}
+              {SECURITY_LEVELS.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
                 </MenuItem>
               ))}
             </TextField>
           </Grid>
           <Grid item xs={12}>
             <TextField
+              select
               name="status"
               label="Status"
               fullWidth
-              select
               value={formData.status}
               onChange={handleChange}
               required
             >
-              {alertStatus.map((status) => (
-                <MenuItem key={status} value={status}>
-                  {status}
+              {ALERT_STATUS.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
                 </MenuItem>
               ))}
             </TextField>
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="location"
+              label="Local"
+              fullWidth
+              value={formData.location}
+              onChange={handleChange}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="affected_assets"
+              label="Ativos Afetados"
+              fullWidth
+              multiline
+              rows={2}
+              value={formData.affected_assets}
+              onChange={handleChange}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="notes"
+              label="Observações"
+              fullWidth
+              multiline
+              rows={4}
+              value={formData.notes}
+              onChange={handleChange}
+            />
           </Grid>
         </Grid>
       </FormDialog>

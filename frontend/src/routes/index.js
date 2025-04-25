@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 
 // Páginas
@@ -14,7 +14,19 @@ import Login from '../pages/Login';
 // Componente de proteção de rota
 const PrivateRoute = ({ children }) => {
   const { isAuthenticated } = useSelector((state) => state.auth);
-  return isAuthenticated ? children : <Navigate to="/login" />;
+  const location = useLocation();
+
+  // Se não estiver autenticado e não estiver na página de login, redireciona para login
+  if (!isAuthenticated && location.pathname !== '/login') {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Se estiver autenticado e tentar acessar a página de login, redireciona para home
+  if (isAuthenticated && location.pathname === '/login') {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
 };
 
 function AppRoutes() {

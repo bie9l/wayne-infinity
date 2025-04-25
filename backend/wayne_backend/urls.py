@@ -18,9 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from knox import views as knox_views
 from django.conf import settings
-from .views import (
-    LoginView, RegisterView, UserView
-)
+from users.auth_views import RegisterView, LoginView, UserAPIView, get_csrf_token
 from .dashboard import DashboardView
 
 # Configuração do Admin
@@ -33,8 +31,10 @@ urlpatterns = [
     path('api/auth/register/', RegisterView.as_view(), name='register'),
     path('api/auth/login/', LoginView.as_view(), name='login'),
     path('api/auth/logout/', knox_views.LogoutView.as_view(), name='logout'),
-    path('api/auth/logoutall/', knox_views.LogoutAllView.as_view(), name='logoutall'),
-    path('api/auth/user/', UserView.as_view(), name='user'),
+    path('api/auth/logout-all/', knox_views.LogoutAllView.as_view(), name='logout-all'),
+    path('api/auth/user/', UserAPIView.as_view(), name='user'),
+    path('api/auth/csrf/', get_csrf_token, name='csrf'),
+    path('api/users/', include('users.urls')),
     path('api/dashboard/', DashboardView.as_view(), name='dashboard'),
     path('api/vehicles/', include('vehicles.urls')),
     path('api/equipment/', include('equipment.urls')),

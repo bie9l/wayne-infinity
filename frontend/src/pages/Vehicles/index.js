@@ -21,6 +21,7 @@ import { fetchStart, fetchSuccess, fetchFailure, addItem, updateItem, removeItem
 import { vehicleService } from '../../services/vehicles';
 import PageContainer from '../../components/PageContainer';
 import FormDialog from '../../components/FormDialog';
+import SecurityLogger from '../../services/logger';
 
 const STATUS_OPTIONS = [
   { value: 'ACTIVE', label: 'Ativo' },
@@ -48,6 +49,7 @@ const TYPE_OPTIONS = [
 function Vehicles() {
   const dispatch = useDispatch();
   const { vehicles, isLoading, error } = useSelector((state) => state.resources);
+  const { user } = useSelector((state) => state.auth);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [formData, setFormData] = useState({
@@ -58,14 +60,19 @@ function Vehicles() {
     year: '',
     license_plate: '',
     vin: '',
-    status: '',
+    status: 'ACTIVE',
     mileage: '',
-    fuel_type: '',
+    fuel_type: 'FLEX',
     last_maintenance: '',
     next_maintenance: '',
     notes: '',
     color: ''
   });
+
+  // Verifica as permissões do usuário
+  const canViewVehicles = ['employee', 'manager', 'security_admin', 'admin'].includes(user?.user_type);
+  const canManageVehicles = ['manager', 'security_admin', 'admin'].includes(user?.user_type);
+  const canDeleteVehicles = ['security_admin', 'admin'].includes(user?.user_type);
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -94,9 +101,9 @@ function Vehicles() {
         year: '',
         license_plate: '',
         vin: '',
-        status: '',
+        status: 'ACTIVE',
         mileage: '',
-        fuel_type: '',
+        fuel_type: 'FLEX',
         last_maintenance: '',
         next_maintenance: '',
         notes: '',
@@ -112,24 +119,74 @@ function Vehicles() {
   };
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value } = e.target;
+    
+    // Tratamento especial para campos de data
+    if (name === 'last_maintenance' || name === 'next_maintenance') {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value || null // Se o valor estiver vazio, define como null
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // Validação dos campos obrigatórios
+      if (!formData.name || !formData.type || !formData.model || !formData.manufacturer || 
+          !formData.year || !formData.license_plate || !formData.vin || !formData.status || 
+          !formData.mileage || !formData.fuel_type || !formData.color) {
+        dispatch(fetchFailure('Todos os campos obrigatórios devem ser preenchidos'));
+        return;
+      }
+
+      if (isNaN(formData.year) || formData.year < 1900 || formData.year > new Date().getFullYear()) {
+        dispatch(fetchFailure('Ano inválido'));
+        return;
+      }
+
+      if (isNaN(formData.mileage) || formData.mileage < 0) {
+        dispatch(fetchFailure('Quilometragem inválida'));
+        return;
+      }
+
+      // Preparar dados para envio, tratando campos de data
+      const dataToSend = {
+        ...formData,
+        year: parseInt(formData.year),
+        mileage: parseInt(formData.mileage),
+        last_maintenance: formData.last_maintenance || null,
+        next_maintenance: formData.next_maintenance || null
+      };
+
       if (editingVehicle) {
-        const updatedVehicle = await vehicleService.update(editingVehicle.id, formData);
+        const updatedVehicle = await vehicleService.update(editingVehicle.id, dataToSend);
         dispatch(updateItem({ type: 'vehicles', item: updatedVehicle }));
+        
+        // Registrar log de atualização
+        await SecurityLogger.logVehicleUpdated(
+          updatedVehicle,
+          '127.0.0.1' // TODO: Pegar IP real
+        );
       } else {
-        const newVehicle = await vehicleService.create(formData);
+        const newVehicle = await vehicleService.create(dataToSend);
         dispatch(addItem({ type: 'vehicles', item: newVehicle }));
+        
+        // Registrar log de criação
+        await SecurityLogger.logVehicleCreated(
+          newVehicle,
+          '127.0.0.1' // TODO: Pegar IP real
+        );
       }
       handleCloseDialog();
     } catch (err) {
+      console.error('Erro completo:', err);
       dispatch(fetchFailure(err.message));
     }
   };
@@ -139,6 +196,12 @@ function Vehicles() {
       try {
         await vehicleService.delete(id);
         dispatch(removeItem({ type: 'vehicles', id }));
+        
+        // Registrar log de exclusão
+        await SecurityLogger.logVehicleDeleted(
+          id,
+          '127.0.0.1' // TODO: Pegar IP real
+        );
       } catch (err) {
         dispatch(fetchFailure(err.message));
       }
@@ -150,15 +213,17 @@ function Vehicles() {
 
   return (
     <PageContainer title="Veículos">
-      <Box mb={3}>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-        >
-          Novo Veículo
-        </Button>
-      </Box>
+      {canManageVehicles && (
+        <Box mb={3}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenDialog()}
+          >
+            Novo Veículo
+          </Button>
+        </Box>
+      )}
 
       <Grid container spacing={3}>
         {vehicles.map((vehicle) => (
@@ -187,20 +252,24 @@ function Vehicles() {
                   Combustível: {FUEL_OPTIONS.find(f => f.value === vehicle.fuel_type)?.label || vehicle.fuel_type}
                 </Typography>
               </CardContent>
-              <CardActions>
-                <IconButton
-                  size="small"
-                  onClick={() => handleOpenDialog(vehicle)}
-                >
-                  <EditIcon />
-                </IconButton>
-                <IconButton
-                  size="small"
-                  onClick={() => handleDelete(vehicle.id)}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </CardActions>
+              {canManageVehicles && (
+                <CardActions>
+                  <IconButton
+                    size="small"
+                    onClick={() => handleOpenDialog(vehicle)}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                  {canDeleteVehicles && (
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDelete(vehicle.id)}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  )}
+                </CardActions>
+              )}
             </Card>
           </Grid>
         ))}

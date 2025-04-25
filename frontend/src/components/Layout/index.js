@@ -30,6 +30,7 @@ import {
   ChevronLeft,
 } from '@mui/icons-material';
 import { logout } from '../../store/slices/authSlice';
+import SecurityLogger from '../../services/logger';
 import AppRoutes from '../../routes';
 
 const drawerWidth = 240;
@@ -85,9 +86,19 @@ function Layout() {
     setAnchorEl(null);
   };
 
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      // Registrar log de logout antes de fazer o logout
+      await SecurityLogger.logLogout('127.0.0.1'); // TODO: Pegar IP real
+      
+      dispatch(logout());
+      navigate('/login');
+    } catch (error) {
+      console.error('Erro ao registrar log de logout:', error);
+      // Mesmo com erro no log, continuar com o logout
+      dispatch(logout());
+      navigate('/login');
+    }
   };
 
   const menuItems = [

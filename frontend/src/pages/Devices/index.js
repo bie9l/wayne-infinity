@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Typography,
   Button,
@@ -10,45 +10,78 @@ import {
   IconButton,
   Box,
   MenuItem,
-  Switch,
-  FormControlLabel,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
+import { useDispatch, useSelector } from 'react-redux';
+import { fetchStart, fetchSuccess, fetchFailure, addItem, updateItem, removeItem } from '../../store/slices/resourcesSlice';
+import { deviceService } from '../../services/devices';
+import SecurityLogger from '../../services/logger';
 import PageContainer from '../../components/PageContainer';
 import FormDialog from '../../components/FormDialog';
 
 function Devices() {
-  const [devices, setDevices] = useState([]);
+  const dispatch = useDispatch();
+  const { securityDevices: devices, isLoading, error } = useSelector((state) => state.resources);
+  const { user } = useSelector((state) => state.auth);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingDevice, setEditingDevice] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     type: '',
+    model: '',
+    manufacturer: '',
+    serial_number: '',
+    status: 'active',
+    ip_address: '',
+    mac_address: '',
+    os: '',
+    os_version: '',
+    purchase_date: '',
+    warranty_expiry: '',
+    last_maintenance: '',
+    assigned_to: '',
     location: '',
-    status: '',
-    isActive: true,
-    ipAddress: '',
+    notes: ''
   });
 
-  const deviceTypes = [
-    'Câmera',
-    'Sensor de Movimento',
-    'Sensor de Presença',
-    'Controle de Acesso',
-    'Alarme',
-    'Outro',
+  const DEVICE_TYPES = [
+    { value: 'mobile', label: 'Dispositivo Móvel' },
+    { value: 'desktop', label: 'Computador Desktop' },
+    { value: 'laptop', label: 'Notebook' },
+    { value: 'tablet', label: 'Tablet' },
+    { value: 'printer', label: 'Impressora' },
+    { value: 'network', label: 'Equipamento de Rede' },
+    { value: 'other', label: 'Outro' }
   ];
 
-  const statusOptions = [
-    'Online',
-    'Offline',
-    'Manutenção',
-    'Erro',
+  const STATUS_OPTIONS = [
+    { value: 'active', label: 'Ativo' },
+    { value: 'inactive', label: 'Inativo' },
+    { value: 'maintenance', label: 'Em Manutenção' },
+    { value: 'retired', label: 'Aposentado' }
   ];
+
+  // Verifica as permissões do usuário
+  const canViewDevices = ['employee', 'manager', 'security_admin', 'admin'].includes(user?.user_type);
+  const canManageDevices = ['manager', 'security_admin', 'admin'].includes(user?.user_type);
+  const canDeleteDevices = ['security_admin', 'admin'].includes(user?.user_type);
+
+  useEffect(() => {
+    const fetchDevices = async () => {
+      try {
+        dispatch(fetchStart());
+        const data = await deviceService.getAll();
+        dispatch(fetchSuccess({ type: 'securityDevices', data }));
+      } catch (err) {
+        dispatch(fetchFailure(err.message));
+      }
+    };
+    fetchDevices();
+  }, [dispatch]);
 
   const handleOpenDialog = (device = null) => {
     if (device) {
@@ -59,10 +92,20 @@ function Devices() {
       setFormData({
         name: '',
         type: '',
+        model: '',
+        manufacturer: '',
+        serial_number: '',
+        status: 'active',
+        ip_address: '',
+        mac_address: '',
+        os: '',
+        os_version: '',
+        purchase_date: '',
+        warranty_expiry: '',
+        last_maintenance: '',
+        assigned_to: '',
         location: '',
-        status: '',
-        isActive: true,
-        ipAddress: '',
+        notes: ''
       });
     }
     setOpenDialog(true);
@@ -74,42 +117,107 @@ function Devices() {
   };
 
   const handleChange = (e) => {
-    const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
-    setFormData({
-      ...formData,
-      [e.target.name]: value,
-    });
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (editingDevice) {
-      setDevices(devices.map((d) =>
-        d.id === editingDevice.id ? { ...formData, id: d.id } : d
-      ));
+    const { name, value } = e.target;
+    
+    // Tratamento especial para campos de data e ip_address
+    if (name === 'purchase_date' || name === 'warranty_expiry' || name === 'last_maintenance') {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value || null
+      }));
+    } else if (name === 'ip_address') {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value || null
+      }));
     } else {
-      setDevices([...devices, { ...formData, id: Date.now() }]);
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
     }
-    handleCloseDialog();
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('Tem certeza que deseja excluir este dispositivo?')) {
-      setDevices(devices.filter((d) => d.id !== id));
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      // Validação dos campos obrigatórios
+      if (!formData.name || !formData.type || !formData.model || !formData.manufacturer || 
+          !formData.serial_number || !formData.status || !formData.location) {
+        dispatch(fetchFailure('Todos os campos obrigatórios devem ser preenchidos'));
+        return;
+      }
+
+      // Preparar dados para envio, tratando campos de data e ip_address
+      const dataToSend = {
+        ...formData,
+        purchase_date: formData.purchase_date || null,
+        warranty_expiry: formData.warranty_expiry || null,
+        last_maintenance: formData.last_maintenance || null,
+        ip_address: formData.ip_address || null
+      };
+
+      console.log('Dados sendo enviados:', dataToSend);
+
+      if (editingDevice) {
+        const updatedDevice = await deviceService.update(editingDevice.id, dataToSend);
+        dispatch(updateItem({ type: 'securityDevices', item: updatedDevice }));
+        
+        // Registrar log de atualização
+        await SecurityLogger.logDeviceUpdated(
+          updatedDevice,
+          '127.0.0.1' // TODO: Pegar IP real
+        );
+      } else {
+        const newDevice = await deviceService.create(dataToSend);
+        dispatch(addItem({ type: 'securityDevices', item: newDevice }));
+        
+        // Registrar log de criação
+        await SecurityLogger.logDeviceCreated(
+          newDevice,
+          '127.0.0.1' // TODO: Pegar IP real
+        );
+      }
+      handleCloseDialog();
+    } catch (err) {
+      console.error('Erro completo:', err);
+      dispatch(fetchFailure(err.message));
     }
   };
+
+  const handleDelete = async (id) => {
+    if (window.confirm('Tem certeza que deseja excluir este dispositivo?')) {
+      try {
+        await deviceService.delete(id);
+        dispatch(removeItem({ type: 'securityDevices', id }));
+        
+        // Registrar log de exclusão
+        await SecurityLogger.logDeviceDeleted(
+          id,
+          '127.0.0.1' // TODO: Pegar IP real
+        );
+      } catch (err) {
+        dispatch(fetchFailure(err.message));
+      }
+    }
+  };
+
+  if (isLoading) return <Typography>Carregando...</Typography>;
+  if (error) return <Typography color="error">{error}</Typography>;
 
   return (
-    <PageContainer title="Dispositivos">
-      <Box mb={3}>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-        >
-          Novo Dispositivo
-        </Button>
-      </Box>
+    <PageContainer title="Dispositivos de Segurança">
+      {canManageDevices && (
+        <Box mb={3}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenDialog()}
+          >
+            Novo Dispositivo
+          </Button>
+        </Box>
+      )}
 
       <Grid container spacing={3}>
         {devices.map((device) => (
@@ -120,35 +228,40 @@ function Devices() {
                   {device.name}
                 </Typography>
                 <Typography color="textSecondary">
-                  Tipo: {device.type}
+                  Tipo: {DEVICE_TYPES.find(t => t.value === device.type)?.label || device.type}
+                </Typography>
+                <Typography color="textSecondary">
+                  Modelo: {device.model}
+                </Typography>
+                <Typography color="textSecondary">
+                  Fabricante: {device.manufacturer}
+                </Typography>
+                <Typography color="textSecondary">
+                  Número de Série: {device.serial_number}
+                </Typography>
+                <Typography color="textSecondary">
+                  Status: {STATUS_OPTIONS.find(s => s.value === device.status)?.label || device.status}
                 </Typography>
                 <Typography color="textSecondary">
                   Localização: {device.location}
                 </Typography>
-                <Typography color="textSecondary">
-                  Status: {device.status}
-                </Typography>
-                <Typography color="textSecondary">
-                  IP: {device.ipAddress}
-                </Typography>
-                <Typography color="textSecondary">
-                  Estado: {device.isActive ? 'Ativo' : 'Inativo'}
-                </Typography>
               </CardContent>
-              <CardActions>
-                <IconButton
-                  size="small"
-                  onClick={() => handleOpenDialog(device)}
-                >
-                  <EditIcon />
-                </IconButton>
-                <IconButton
-                  size="small"
-                  onClick={() => handleDelete(device.id)}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </CardActions>
+              {canManageDevices && (
+                <CardActions>
+                  <IconButton
+                    size="small"
+                    onClick={() => handleOpenDialog(device)}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={() => handleDelete(device.id)}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </CardActions>
+              )}
             </Card>
           </Grid>
         ))}
@@ -173,20 +286,148 @@ function Devices() {
           </Grid>
           <Grid item xs={12}>
             <TextField
+              select
               name="type"
               label="Tipo"
               fullWidth
-              select
               value={formData.type}
               onChange={handleChange}
               required
             >
-              {deviceTypes.map((type) => (
-                <MenuItem key={type} value={type}>
-                  {type}
+              {DEVICE_TYPES.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
                 </MenuItem>
               ))}
             </TextField>
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="model"
+              label="Modelo"
+              fullWidth
+              value={formData.model}
+              onChange={handleChange}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="manufacturer"
+              label="Fabricante"
+              fullWidth
+              value={formData.manufacturer}
+              onChange={handleChange}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="serial_number"
+              label="Número de Série"
+              fullWidth
+              value={formData.serial_number}
+              onChange={handleChange}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              select
+              name="status"
+              label="Status"
+              fullWidth
+              value={formData.status}
+              onChange={handleChange}
+              required
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="ip_address"
+              label="Endereço IP"
+              fullWidth
+              value={formData.ip_address || ''}
+              onChange={handleChange}
+              placeholder="Ex: 192.168.1.1"
+              helperText="Formato: xxx.xxx.xxx.xxx"
+              error={formData.ip_address && !/^(\d{1,3}\.){3}\d{1,3}$/.test(formData.ip_address)}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="mac_address"
+              label="Endereço MAC"
+              fullWidth
+              value={formData.mac_address}
+              onChange={handleChange}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="os"
+              label="Sistema Operacional"
+              fullWidth
+              value={formData.os}
+              onChange={handleChange}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="os_version"
+              label="Versão do SO"
+              fullWidth
+              value={formData.os_version}
+              onChange={handleChange}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="purchase_date"
+              label="Data de Compra"
+              type="date"
+              fullWidth
+              value={formData.purchase_date}
+              onChange={handleChange}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="warranty_expiry"
+              label="Fim da Garantia"
+              type="date"
+              fullWidth
+              value={formData.warranty_expiry}
+              onChange={handleChange}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="last_maintenance"
+              label="Última Manutenção"
+              type="date"
+              fullWidth
+              value={formData.last_maintenance}
+              onChange={handleChange}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="assigned_to"
+              label="Atribuído a"
+              fullWidth
+              value={formData.assigned_to}
+              onChange={handleChange}
+            />
           </Grid>
           <Grid item xs={12}>
             <TextField
@@ -200,41 +441,13 @@ function Devices() {
           </Grid>
           <Grid item xs={12}>
             <TextField
-              name="status"
-              label="Status"
+              name="notes"
+              label="Observações"
+              multiline
+              rows={4}
               fullWidth
-              select
-              value={formData.status}
+              value={formData.notes}
               onChange={handleChange}
-              required
-            >
-              {statusOptions.map((status) => (
-                <MenuItem key={status} value={status}>
-                  {status}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid item xs={12}>
-            <TextField
-              name="ipAddress"
-              label="Endereço IP"
-              fullWidth
-              value={formData.ipAddress}
-              onChange={handleChange}
-              required
-            />
-          </Grid>
-          <Grid item xs={12}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={formData.isActive}
-                  onChange={handleChange}
-                  name="isActive"
-                />
-              }
-              label="Dispositivo Ativo"
             />
           </Grid>
         </Grid>

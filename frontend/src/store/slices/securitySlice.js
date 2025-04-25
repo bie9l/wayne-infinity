@@ -1,9 +1,8 @@
 import { createSlice } from '@reduxjs/toolkit';
 
 const initialState = {
-  accessLogs: [],
   alerts: [],
-  restrictedAreas: [],
+  logs: [],
   isLoading: false,
   error: null,
   dashboardData: null,
@@ -21,14 +20,11 @@ export const securitySlice = createSlice({
       state.isLoading = false;
       const { type, data } = action.payload;
       switch (type) {
-        case 'accessLogs':
-          state.accessLogs = data;
-          break;
         case 'alerts':
           state.alerts = data;
           break;
-        case 'restrictedAreas':
-          state.restrictedAreas = data;
+        case 'logs':
+          state.logs = data;
           break;
         case 'dashboard':
           state.dashboardData = data;
@@ -49,22 +45,14 @@ export const securitySlice = createSlice({
         alert.id === action.payload.id ? action.payload : alert
       );
     },
-    addAccessLog: (state, action) => {
-      state.accessLogs.unshift(action.payload);
-    },
-    addRestrictedArea: (state, action) => {
-      state.restrictedAreas.push(action.payload);
-    },
-    updateRestrictedArea: (state, action) => {
-      state.restrictedAreas = state.restrictedAreas.map((area) =>
-        area.id === action.payload.id ? action.payload : area
+    removeAlert: (state, action) => {
+      state.alerts = state.alerts.filter(
+        (alert) => alert.id !== action.payload
       );
     },
-    removeRestrictedArea: (state, action) => {
-      state.restrictedAreas = state.restrictedAreas.filter(
-        (area) => area.id !== action.payload
-      );
-    },
+    addLog: (state, action) => {
+      state.logs.unshift(action.payload);
+    }
   },
 });
 
@@ -74,10 +62,8 @@ export const {
   fetchFailure,
   addAlert,
   updateAlert,
-  addAccessLog,
-  addRestrictedArea,
-  updateRestrictedArea,
-  removeRestrictedArea,
+  removeAlert,
+  addLog
 } = securitySlice.actions;
 
 export default securitySlice.reducer; 

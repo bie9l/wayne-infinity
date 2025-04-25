@@ -31,7 +31,7 @@ class Vehicle(models.Model):
     manufacturer = models.CharField(_('Fabricante'), max_length=100)
     year = models.IntegerField(_('Ano'))
     license_plate = models.CharField(_('Placa'), max_length=20, unique=True)
-    vin = models.CharField(_('Número do Chassi'), max_length=17, unique=True)
+    vin = models.CharField(_('Número do Chassi'), max_length=100, unique=True)
     status = models.CharField(
         _('Status'),
         max_length=20,

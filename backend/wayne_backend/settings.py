@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'knox',
+    'users.apps.UsersConfig',
     'vehicles.apps.VehiclesConfig',
     'equipment.apps.EquipmentConfig',
     'devices.apps.DevicesConfig',
@@ -133,6 +134,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'knox.auth.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -143,8 +145,9 @@ REST_FRAMEWORK = {
 REST_KNOX = {
     'TOKEN_TTL': None,  # Tokens não expiram
     'AUTO_REFRESH': True,
-    'USER_SERIALIZER': 'knox.serializers.UserSerializer',
-    'AUTH_HEADER_PREFIX': 'Knox',
+    'USER_SERIALIZER': 'users.serializers.UserSerializer',
+    'AUTH_HEADER_PREFIX': 'Token',
+    'TOKEN_MODEL': 'knox.AuthToken',
 }
 
 # Configurações do Admin
@@ -152,8 +155,72 @@ ADMIN_SITE_HEADER = "Gabriel DEV - Wayne Enterprises"
 ADMIN_SITE_TITLE = "Wayne Enterprises Admin"
 ADMIN_INDEX_TITLE = "Administração"
 
+# Configurações de CORS
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# Configurações de CSRF
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+]
+
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SECURE = False  # Mude para True em produção com HTTPS
+
+# Configurações de Sessão
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = False  # Mude para True em produção com HTTPS
+
+# Configuração do modelo de usuário personalizado
+AUTH_USER_MODEL = 'users.User'
+
+# Configuração de Logging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'wayne_backend': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}

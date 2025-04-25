@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDispatch } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import { loginSuccess } from '../../store/slices/authSlice';
 import { authService } from '../../services/auth';
+import SecurityLogger from '../../services/logger';
 
 function Login() {
   const [credentials, setCredentials] = useState({
@@ -22,6 +23,8 @@ function Login() {
   const [error, setError] = useState('');
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from?.pathname || '/';
 
   const handleChange = (e) => {
     setCredentials({
@@ -34,20 +37,49 @@ function Login() {
     e.preventDefault();
     setError('');
     
+    console.log('Tentando fazer login com:', credentials);
+    
     try {
       const response = await authService.login(
         credentials.username,
         credentials.password
       );
       
-      dispatch(loginSuccess({
-        token: response.token,
-        user: response.user,
-      }));
-      navigate('/');
+      console.log('Resposta do servidor:', response);
+      
+      if (response.token) {
+        dispatch(loginSuccess({
+          token: response.token,
+          user: response.user,
+        }));
+
+        try {
+          // Registrar log de login
+          await SecurityLogger.logLogin('127.0.0.1'); // TODO: Pegar IP real
+        } catch (logError) {
+          console.error('Erro ao registrar log de login:', logError);
+        }
+
+        // Redireciona para a página que tentou acessar ou para home
+        navigate(from, { replace: true });
+      } else {
+        setError('Resposta inválida do servidor. Token não encontrado.');
+      }
     } catch (err) {
-      setError(err.response?.data?.non_field_errors?.[0] || 
-              'Erro ao fazer login. Por favor, verifique suas credenciais.');
+      console.error('Erro completo:', err);
+      console.error('Resposta do servidor:', err.response?.data);
+      
+      if (err.response?.status === 401) {
+        setError('Credenciais inválidas. Verifique seu usuário e senha.');
+      } else if (err.response?.status === 405) {
+        setError('Método de requisição inválido. Por favor, tente novamente.');
+      } else {
+        setError(
+          err.response?.data?.non_field_errors?.[0] || 
+          err.response?.data?.detail ||
+          'Erro ao fazer login. Tente novamente mais tarde.'
+        );
+      }
     }
   };
 
