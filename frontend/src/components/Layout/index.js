@@ -72,7 +72,6 @@ function Layout() {
   const [anchorEl, setAnchorEl] = useState(null);
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const { user } = useSelector((state) => state.auth);
 
   const handleDrawerToggle = () => {
     setOpen(!open);
@@ -125,7 +124,7 @@ function Layout() {
               <MenuIcon />
             </IconButton>
             <BatLogo
-              src="https://img.freepik.com/vetores-gratis/silhueta-de-morcego-isolada-em-fundo-transparente-elemento-de-design-tradicional-de-halloween_145391-799.jpg"
+              src="/logo_batman.png"
               alt="Batman Logo"
             />
             <Typography variant="h6" noWrap component="div">

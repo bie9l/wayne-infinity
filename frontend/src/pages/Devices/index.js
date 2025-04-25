@@ -66,8 +66,10 @@ function Devices() {
   ];
 
   // Verifica as permissões do usuário
+  // eslint-disable-next-line no-unused-vars
   const canViewDevices = ['employee', 'manager', 'security_admin', 'admin'].includes(user?.user_type);
   const canManageDevices = ['manager', 'security_admin', 'admin'].includes(user?.user_type);
+  // eslint-disable-next-line no-unused-vars
   const canDeleteDevices = ['security_admin', 'admin'].includes(user?.user_type);
 
   useEffect(() => {

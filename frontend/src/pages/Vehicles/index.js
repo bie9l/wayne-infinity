@@ -70,6 +70,7 @@ function Vehicles() {
   });
 
   // Verifica as permissões do usuário
+  // eslint-disable-next-line no-unused-vars
   const canViewVehicles = ['employee', 'manager', 'security_admin', 'admin'].includes(user?.user_type);
   const canManageVehicles = ['manager', 'security_admin', 'admin'].includes(user?.user_type);
   const canDeleteVehicles = ['security_admin', 'admin'].includes(user?.user_type);

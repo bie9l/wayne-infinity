@@ -60,6 +60,7 @@ function Equipment() {
   ];
 
   // Verifica as permissões do usuário
+  // eslint-disable-next-line no-unused-vars
   const canViewEquipment = ['employee', 'manager', 'security_admin', 'admin'].includes(user?.user_type);
   const canManageEquipment = ['manager', 'security_admin', 'admin'].includes(user?.user_type);
   const canDeleteEquipment = ['security_admin', 'admin'].includes(user?.user_type);
